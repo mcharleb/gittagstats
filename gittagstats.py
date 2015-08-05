@@ -75,14 +75,16 @@ class Group:
 		return commits
 
 class Report:
-	def __init__(self, repo, tags, files, groups):
+	def __init__(self, repo, tags, patterns, files, groups):
 		self.repo = repo
 		self.tags = tags
+		self.patterns = patterns
 		self.files = files
 		self.groups = groups
 
 	def generate(self):
 		for i in range(0, len(self.tags)-1):
+			print "Computing", self.tags[i+1], "..."
 			self._get_commits(self.tags[i], self.tags[i+1])
 
 	def show_table(self):
@@ -102,45 +104,35 @@ class Report:
 			allcommits = g.get_commits()
 			for (tag, commits, authors) in allcommits:
 				print g.name, tag+":"
-				lines = self.repo.git.show("--shortstat", "--oneline", '--format=%H:%ae:%an ', *commits).split("\n")
+				lines = self.repo.git.show("--numstat", "--oneline", '--format=%H:%ae:%an ', *commits).split("\n")
 				print "\t", lines[0]
 				for line in lines[2:]:
 					print "\t", line
-				print authors
+				print "\tAuthors:"
+				for a in authors.keys():
+					print "\t\t", a, authors[a]
 				
 		
 	def _get_commits(self, tag1, tag2):
-		chunks = self.repo.git.log("--no-merges", "--numstat", "{0}..{1}".format(tag1, tag2), '--format=#%H:%ae:%an ', *self.files).split("#")
+		search_set = [ '--grep="{0}"'.format(x) for x in self.patterns ]
+		search_set += self.files
+		commitlist = self.repo.git.log("--no-merges", "--numstat", "{0}..{1}".format(tag1, tag2), '--format=#%h:%ae', *search_set).split("#")[1:]
 
 		# Initialize the tag stats for each group
 		for g in self.groups:
 			g.add_tag(tag2)
 
-		# skip leading '#'
-		for c in chunks[1:]:
+		for c in commitlist:
 			commit = c.split("\n")[:-1]
 			if not commit[0]:
 				continue
-			[cid, email, name] = commit[0].split(":")
+			[cid, email] = commit[0].split(":")
 			for g in self.groups:
-				add_commit = False
-				for m in g.whitelist:
-					if m in email:
-						add_commit = True
-						break
-				if not g.whitelist:
-					add_commit = True
-
-				for m in g.blacklist:
-					if m in email:
-						add_commit = False
-						break
-				if add_commit:
-					# skip blank line
+				cond1 = not g.whitelist or filter(lambda a: a in email, g.whitelist)
+				cond2 = not g.blacklist or not filter(lambda a: a in email, g.blacklist)
+				if cond1 and cond2:
 					for diff in commit[2:]:
-						( i, d, filename ) = diff.split("\t")
-						insertions = int(i)
-						deletions = int(d)
-						g.add_commit(tag2, cid, email, insertions, deletions, filename)
-						
-		
+						( insertions, deletions, filename ) = diff.split("\t")
+						g.add_commit(tag2, cid, email, int(insertions), int(deletions), filename)
+
+
