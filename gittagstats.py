@@ -39,7 +39,7 @@ from prettytable import PrettyTable
 class TagStats:
 	def __init__(self):
 		self.authors = {}
-		self.stats = (0, 0, 1)
+		self.stats = (0, 0, 0)
 		self.commits = []
 		self.files = {}
 
