@@ -100,13 +100,14 @@ class Report:
 			print t
 
 	def show_table_csv(self):
+		print "Group Name, Tag, Files Changed, Insertions, Deletions, Commits, Authors"
 		for g in self.groups:
 			for x in self.tags[1:]:
 				if x in g.tags.keys():
-					num_authors = (len(g.tags[x].authors.keys()),)
-					tup = g.tags[x].stats + num_authors
+					num_authors = len(g.tags[x].authors.keys())
 					num_files = len(g.tags[x].files.keys())
-					print "{0}, {1}, {3}, {4}, {5}".format(g.name, x, num_files, *tup)
+					(insertions, deletions, commits) = g.tags[x].stats
+					print "{0}, {1}, {2}, {3}, {4}, {5}, {6}".format(g.name, x, num_files, insertions, deletions, commits, num_authors)
 
 	def show_commits(self):
 		for g in self.groups:
