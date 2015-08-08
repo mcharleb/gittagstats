@@ -39,7 +39,7 @@ from prettytable import PrettyTable
 class TagStats:
 	def __init__(self):
 		self.authors = {}
-		self.stats = (0, 0)
+		self.stats = (0, 0, 1)
 		self.commits = []
 		self.files = {}
 
@@ -64,15 +64,15 @@ class Group:
 		else:
 			self.tags[tag].authors[email] = 1
 
-		self.tags[tag].stats = tuple(sum(x) for x in zip(self.tags[tag].stats, (insertions, deletions)))
+		self.tags[tag].stats = tuple(sum(x) for x in zip(self.tags[tag].stats, (insertions, deletions, 1)))
 		self.tags[tag].commits.append(cid)
-		self.tags[tag].files[filename] = 1
+		if filename in self.tags[tag].files.keys():
+			self.tags[tag].files[filename] = tuple(sum(x) for x in zip(self.tags[tag].files[filename], (insertions, deletions, 1)))
+		else:
+			self.tags[tag].files[filename] = (insertions, deletions, 1)
 
-	def get_commits(self):
-		commits = []
-		for t in self.tags.keys():
-			commits.append((t, self.tags[t].commits, self.tags[t].authors))
-		return commits
+	def get_commits(self, tag):
+		return [ self.tags[tag].commits, self.tags[tag].files, self.tags[tag].authors ]
 
 class Report:
 	def __init__(self, repo, tags, patterns, files, groups):
@@ -93,21 +93,33 @@ class Report:
 			for x in self.tags[1:]:
 				if x in g.tags.keys():
 					a = (x, len(g.tags[x].files.keys()))
-					b = (len(g.tags[x].commits), len(g.tags[x].authors.keys()))
+					b = (len(g.tags[x].authors.keys()),)
 					tup = a + g.tags[x].stats + b
 					t.add_row(tup)
 			print g.name+":"
 			print t
 
+	def show_table_csv(self):
+		for g in self.groups:
+			for x in self.tags[1:]:
+				if x in g.tags.keys():
+					num_authors = (len(g.tags[x].authors.keys()),)
+					tup = g.tags[x].stats + num_authors
+					num_files = len(g.tags[x].files.keys())
+					print "{0}, {1}, {3}, {4}, {5}".format(g.name, x, num_files, *tup)
+
 	def show_commits(self):
 		for g in self.groups:
-			allcommits = g.get_commits()
-			for (tag, commits, authors) in allcommits:
-				print g.name, tag+":"
-				lines = self.repo.git.show("--numstat", "--oneline", '--format=%H:%ae:%an ', *commits).split("\n")
-				print "\t", lines[0]
-				for line in lines[2:]:
-					print "\t", line
+			for t in g.tags.keys():
+				[ commits, files, authors ] = g.get_commits(t)
+				print g.name, t+":"
+				lines = self.repo.git.show("--oneline", *commits).split("\n")
+				print "\tCommits" 
+				for c in commits:
+					print "\t\t", c
+				print "\tFiles:"
+				for a in files.keys():
+					print "\t\t", a, "insertions: {0} deletions: {1} commits {2}".format(*files[a])
 				print "\tAuthors:"
 				for a in authors.keys():
 					print "\t\t", a, authors[a]
@@ -116,7 +128,7 @@ class Report:
 	def _get_commits(self, tag1, tag2):
 		search_set = [ '--grep="{0}"'.format(x) for x in self.patterns ]
 		search_set += self.files
-		commitlist = self.repo.git.log("--no-merges", "--numstat", "{0}..{1}".format(tag1, tag2), '--format=#%h:%ae', *search_set).split("#")[1:]
+		commitlist = self.repo.git.log("--no-merges", "--numstat", "{0}..{1}".format(tag1, tag2), '--format=#%h:%ae', "--", *search_set).split("#")[1:]
 
 		# Initialize the tag stats for each group
 		for g in self.groups:
